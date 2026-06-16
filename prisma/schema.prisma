@@ -1,0 +1,58 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["tracing"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  wallets   Wallet[]
+  logs      AuditLog[]
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  address   String
+  network   String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  snapshots PortfolioSnapshot[]
+
+  @@unique([address, network])
+}
+
+model PortfolioSnapshot {
+  id        String   @id @default(uuid())
+  walletId  String
+  wallet    Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  valueUsd  Float
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  details   Json
+  ip        String?
+  createdAt DateTime @default(now())
+}
+
+model SecurityEvent {
+  id        String   @id @default(uuid())
+  eventType String
+  ip        String
+  details   Json
+  createdAt DateTime @default(now())
+}

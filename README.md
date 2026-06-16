@@ -1,64 +1,78 @@
-# Node.js Prometheus Monitoring System
+# Observable Crypto Analytics Platform
 
-![Monitoring Architecture](assets/architecture.png)
+A production-grade, full-stack platform for crypto portfolio management with a heavy focus on **observability**, **security**, and **scalable analytics**. This platform demonstrates how to build a modern fintech application with deep visibility into system performance and security events.
 
-## Overview
-This project is a Node.js application integrated with **Prometheus** and **Grafana** for real-time monitoring and metrics visualization. It demonstrates how to collect application-level metrics (like request counts and execution times) and system-level metrics (using Node Exporter) to gain insights into service performance.
+## 🚀 Key Features
 
-The application exposes several endpoints that simulate different workloads ("fast", "slow", and "invalid") and provides a `/metrics` endpoint for Prometheus to scrape.
+- **Wallet Management**: Seamlessly add and track crypto wallets across multiple networks (Ethereum, Bitcoin).
+- **Real-time Portfolio Valuation**: Automated value calculation using the CoinGecko API with high-performance caching.
+- **Deep Observability**:
+  - **Metrics**: Detailed system and business metrics scraped by **Prometheus**.
+  - **Distributed Tracing**: End-to-end request tracking using **OpenTelemetry** and **Grafana Tempo**.
+  - **Centralized Logging**: Structured logging with **Winston** and **Grafana Loki**.
+  - **Visual Dashboards**: Pre-configured **Grafana** dashboards for real-time monitoring.
+- **Enterprise Security**:
+  - **Authentication**: Secure JWT-based user authentication.
+  - **Audit Logging**: Comprehensive tracking of all user actions and system changes.
+  - **Security Events**: Automatic detection and logging of suspicious activities (e.g., failed wallet additions).
+  - **Rate Limiting**: Protection against DDoS and brute-force attacks.
+- **Performance**: High-speed price data retrieval via **Redis** caching.
 
-## Project Structure
-- `app.js`: Main Express application with Prometheus client integration.
-- `docker-compose.yml`: Configures Prometheus and Node Exporter services.
-- `prometheus-config.yml`: Global configuration for the Prometheus scraper.
-- `Learning.txt`: Project overview and setup notes.
+## 🛠️ Tech Stack
 
-## Endpoints
-- `GET /`: Returns a welcome message.
-- `GET /fast`: Simulates a fast operation with metric recording.
-- `GET /slow`: Simulates a slow operation with metric recording.
-- `GET /invalid`: Handles invalid inputs and records error metrics.
-- `GET /metrics`: Exposes the Prometheus metrics.
+- **Frontend**: [Next.js](https://nextjs.org/) (App Router), TypeScript, Lucide Icons, Vanilla CSS.
+- **Backend**: [Node.js](https://nodejs.org/), [Express](https://expressjs.com/), TypeScript.
+- **Database**: [PostgreSQL](https://www.postgresql.org/) with [Prisma ORM](https://www.prisma.io/).
+- **Cache**: [Redis](https://r
+edis.io/).
+- **Observability**: 
+  - [Prometheus](https://prometheus.io/) (Metrics)
+  - [Grafana](https://grafana.com/) (Visualization)
+  - [Loki](https://grafana.com/oss/loki/) (Logs)
+  - [Tempo](https://grafana.com/oss/tempo/) (Traces)
+  - [OpenTelemetry](https://opentelemetry.io/) (Instrumentation)
+- **Infrastructure**: [Docker Compose](https://www.docker.com/).
 
-## Setup & Installation
+## 📂 Project Structure
 
-### Prerequisites
-- Node.js (v18+)
-- Docker and Docker Compose
+- `src/` - Backend API source code (Services, Routes, Middlewares).
+- `frontend/` - Next.js client application.
+- `prisma/` - Database schema and migrations.
+- `docker-compose.yml` - Full infrastructure orchestration.
+- `prometheus-config.yml` - Metrics scraping configuration.
+- `grafana-dashboards.yml` / `grafana-datasources.yml` - Automated Grafana provisioning.
 
-### 1. Install Dependencies
-```bash
-npm install
-```
+## 🏁 Getting Started
 
-### 2. Run the Node.js Application
-```bash
-node app.js
-```
-The server will start on `http://localhost:3030`.
+To get the platform up and running, please refer to the detailed **[EXECUTION_GUIDE.md](./EXECUTION_GUIDE.md)**.
 
-### 3. Start Infrastructure (Prometheus & Node Exporter)
-Use Docker Compose to launch the monitoring stack:
-```bash
-docker-compose up -d
-```
-Prometheus will be available at `http://localhost:9090`.
+### Quick Start Summary:
+1. **Infrastructure**: `docker-compose up -d`
+2. **Backend**: 
+   - `npm install`
+   - `npx prisma migrate dev`
+   - `npm run dev`
+3. **Frontend**:
+   - `cd frontend && npm install`
+   - `npm run dev`
 
-### 4. Setup Grafana
-Run Grafana as a Docker container:
-```bash
-docker run -d -p 3000:3000 --name=grafana grafana/grafana-oss
-```
-- Access Grafana at `http://localhost:3000`.
-- Connect Grafana to the Prometheus data source (`http://localhost:9090`).
-- Create dashboards based on the metrics: `endpoint_requests_total` and `endpoint_execution_time_ms`.
+## 📊 Observability & Monitoring
 
-## Metrics Collected
-- **Default Metrics**: Standard Node.js runtime metrics (CPU, Memory, Event Loop).
-- **Custom Metrics**:
-    - `endpoint_requests_total`: Total number of requests per endpoint.
-    - `endpoint_execution_time_ms`: Histogram of request durations.
+The platform is designed to be fully observable. Once running, you can access:
+- **Grafana**: `http://localhost:3000` (Default: admin/admin)
+- **Prometheus**: `http://localhost:9090`
+- **Loki/Tempo**: Integrated directly into Grafana's Explore view.
 
-## Important Notes
-- The Prometheus configuration uses a static target. Ensure the IP address in `prometheus-config.yml` matches your local machine's IP to allow the Docker container to reach your Node.js application.
-- Prometheus scrapes data every 4 seconds as per the `scrape_interval` configuration.
+Custom metrics include:
+- `http_requests_total`: Request counter by method and status.
+- `wallet_lookup_total`: Business logic counter for wallet access.
+- `portfolio_requests_total`: Counter for portfolio value calculations.
+- `external_api_latency`: Latency tracking for CoinGecko API calls.
+
+## 🔒 Security Measures
+
+- **JWT Auth**: Tokens are required for all sensitive routes.
+- **Audit Trails**: Every wallet addition or removal is logged with user ID, IP, and timestamp.
+- **Error Handling**: Standardized error responses to prevent sensitive data leakage.
+- **Rate Limiting**: Configured to prevent API abuse.
+- **Helmet.js**: HTTP headers security.

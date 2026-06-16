@@ -1,0 +1,29 @@
+groups:
+  - name: app-alerts
+    rules:
+      - alert: HighRequestRate
+        expr: rate(endpoint_requests_total[1m]) > 0.5
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request rate on {{ $labels.endpoint }}"
+          description: "Endpoint {{ $labels.endpoint }} is getting more than 0.5 req/s"
+
+      - alert: InvalidEndpointHit
+        expr: increase(endpoint_requests_total{endpoint="invalid"}[1m]) > 2
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Invalid endpoint being hit repeatedly"
+          description: "More than 2 invalid requests in the last minute"
+
+      - alert: SlowEndpointLatency
+        expr: rate(endpoint_execution_time_ms_sum[1m]) / rate(endpoint_execution_time_ms_count[1m]) > 5
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow endpoint average latency is high"
+          description: "Average execution time exceeded 5ms"
