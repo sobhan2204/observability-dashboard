@@ -1,8 +1,9 @@
 global:
   smtp_smarthost: 'smtp.gmail.com:587'
-  smtp_from: 'youremail@gmail.com'
-  smtp_auth_username: 'youremail@gmail.com'
-  smtp_auth_password: 'your-16-char-app-password'   # the app password, not real password
+  smtp_from: 'pandasobhan22@gmail.com'
+  smtp_auth_username: 'pandasobhan22@gmail.com'
+  smtp_auth_identity: 'pandasobhan22@gmail.com'
+  smtp_auth_password: 'wplj rcbz wuiz mxkm'   # the app password, not real password
   smtp_require_tls: true
 
 route:
@@ -10,16 +11,10 @@ route:
   group_wait: 10s
   group_interval: 30s
   repeat_interval: 1h
-  receiver: 'notify-all'
+  receiver: 'email-alerts'
 
 receivers:
-  - name: 'notify-all'
-    slack_configs:
-      - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
-        channel: '#alerts'
-        title: '{{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
-        send_resolved: true
+  - name: 'email-alerts'
     email_configs:
-      - to: 'youremail@gmail.com'
+      - to: 'pandasobhan22@gmail.com'
         send_resolved: true
