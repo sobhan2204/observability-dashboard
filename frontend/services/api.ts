@@ -1,4 +1,6 @@
-const API_BASE_URL = 'http://localhost:3030/api';
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:3030/api'
+);
 
 const getHeaders = () => {
   const token = localStorage.getItem('token');
@@ -8,41 +10,59 @@ const getHeaders = () => {
   };
 };
 
+const getErrorMessage = async (response: Response) => {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    const error = await response.json();
+    return error.error || error.message || 'Request failed';
+  }
+
+  const text = await response.text();
+  return text || 'Request failed';
+};
+
+const request = async (endpoint: string, init: RequestInit) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...init,
+      headers: getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(await getErrorMessage(response));
+    }
+
+    return response;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(`Unable to reach API at ${API_BASE_URL}. Check that the backend is running and the URL is correct.`);
+    }
+
+    throw error;
+  }
+};
+
 export const api = {
   async post(endpoint: string, data: any) {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await request(endpoint, {
       method: 'POST',
-      headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Request failed');
-    }
     return response.json();
   },
 
   async get(endpoint: string) {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await request(endpoint, {
       method: 'GET',
-      headers: getHeaders(),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Request failed');
-    }
     return response.json();
   },
 
   async delete(endpoint: string) {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await request(endpoint, {
       method: 'DELETE',
-      headers: getHeaders(),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Request failed');
-    }
     return response;
   },
 };
