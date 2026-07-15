@@ -1,4 +1,5 @@
 import client from 'prom-client';
+import { Pool } from 'pg';
 
 // Create a Registry
 const register = new client.Registry();
@@ -76,10 +77,42 @@ export const externalApiLatency = new client.Histogram({
   buckets: [0.1, 0.3, 0.5, 1, 2, 5]
 });
 
+// --- CHANGED: added a `query` label so latency can be broken down per query
+// site (e.g. "getPortfolioByWallet"). Keep this label to a small, fixed set
+// of call-site names — never pass raw SQL text as the label value, since
+// that creates unbounded cardinality and will blow up Prometheus storage.
 export const dbQueryDuration = new client.Histogram({
   name: 'db_query_duration',
   help: 'Duration of database queries',
+  labelNames: ['query'],
   buckets: [0.01, 0.05, 0.1, 0.5, 1, 2]
+});
+
+// --- NEW: connection pool gauges (backed by pg.Pool's own counters) ---
+export const dbPoolActiveConnections = new client.Gauge({
+  name: 'db_pool_active_connections',
+  help: 'Number of connections currently checked out of the pool and in use'
+});
+
+export const dbPoolIdleConnections = new client.Gauge({
+  name: 'db_pool_idle_connections',
+  help: 'Number of connections sitting idle in the pool'
+});
+
+export const dbPoolMaxConnections = new client.Gauge({
+  name: 'db_pool_max_connections',
+  help: 'Configured maximum size of the connection pool'
+});
+
+// --- NEW: lock and deadlock gauges (backed by polling Postgres system views) ---
+export const dbLockWaits = new client.Gauge({
+  name: 'db_lock_waits',
+  help: 'Current number of sessions waiting to acquire a lock'
+});
+
+export const dbDeadlocksTotal = new client.Gauge({
+  name: 'db_deadlocks_total',
+  help: 'Cumulative deadlock count reported by PostgreSQL for this database'
 });
 
 // Register all custom metrics
@@ -97,5 +130,50 @@ register.registerMetric(cacheHitsTotal);
 register.registerMetric(cacheMissesTotal);
 register.registerMetric(externalApiLatency);
 register.registerMetric(dbQueryDuration);
+register.registerMetric(dbPoolActiveConnections);
+register.registerMetric(dbPoolIdleConnections);
+register.registerMetric(dbPoolMaxConnections);
+register.registerMetric(dbLockWaits);
+register.registerMetric(dbDeadlocksTotal);
+
+// --- NEW: wire pool metrics ---
+// Call this once, right after you construct your pg.Pool instance, passing
+// the same `max` value you configured on the pool (pg's public TypeScript
+// types don't expose `.options`, so we take it as an explicit argument
+// instead of reading it back off the pool instance).
+//   const maxConnections = 20;
+//   const pool = new Pool({ ...config, max: maxConnections });
+//   wirePoolMetrics(pool, maxConnections);
+export function wirePoolMetrics(pool: Pool, maxConnections: number, intervalMs = 5000): void {
+  dbPoolMaxConnections.set(maxConnections);
+
+  // pg.Pool doesn't emit active/idle counts as events, so sample on an interval.
+  setInterval(() => {
+    dbPoolActiveConnections.set(pool.totalCount - pool.idleCount);
+    dbPoolIdleConnections.set(pool.idleCount);
+  }, intervalMs);
+}
+
+// --- NEW: wire lock/deadlock metrics ---
+// Call this once alongside wirePoolMetrics(pool). Requires the pool's DB
+// user to have permission to read pg_locks and pg_stat_database (default
+// for most roles, including the table owner).
+export function wireLockMetrics(pool: Pool, intervalMs = 10000): void {
+  setInterval(async () => {
+    try {
+      const lockRes = await pool.query(
+        `SELECT count(*) AS waiting FROM pg_locks WHERE NOT granted`
+      );
+      dbLockWaits.set(Number(lockRes.rows[0].waiting));
+
+      const deadlockRes = await pool.query(
+        `SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()`
+      );
+      dbDeadlocksTotal.set(Number(deadlockRes.rows[0].deadlocks));
+    } catch (err) {
+      console.error('Failed to poll lock/deadlock metrics', err);
+    }
+  }, intervalMs);
+}
 
 export { register };
