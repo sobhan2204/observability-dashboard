@@ -946,7 +946,7 @@
                     "group": "prometheus",
                     "kind": "DataQuery",
                     "spec": {
-                      "expr": "100 * (1 - (node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay\"}))"
+                      "expr": "100 * (1 - (node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay\", mountpoint=\"/\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay\", mountpoint=\"/\"}))"
                     },
                     "version": "v0"
                   },
@@ -958,7 +958,7 @@
             "transformations": []
           }
         },
-        "description": "Displays the percentage of persistent storage currently in use. Temporary file systems are excluded. High disk utilization may prevent applications from writing files, logs, or database data.",
+        "description": "Displays the percentage of persistent storage currently in use on the system disk. Temporary file systems are excluded. High disk utilization may prevent applications from writing files, logs, or database data.",
         "id": 40,
         "links": [],
         "title": "Disk Usage %",
@@ -971,6 +971,7 @@
                 "color": {
                   "mode": "thresholds"
                 },
+                "displayName": "System Disk",
                 "thresholds": {
                   "mode": "absolute",
                   "steps": [
@@ -3235,10 +3236,10 @@
             "transformations": []
           }
         },
-        "description": "Ranks the ten slowest SQL queries based on P95 execution time, grouped by query fingerprint or statement label. Calculated using histogram_quantile per query label, then topk(10, ...) to surface the worst offenders. This panel helps identify poorly optimized queries requiring indexing, query rewriting, or execution plan review.",
+        "description": "Ranks the slowest SQL queries based on P95 execution time, grouped by query fingerprint or statement label. Calculated using histogram_quantile per query label, then topk(10, ...) to surface the worst offenders. This panel helps identify poorly optimized queries requiring indexing, query rewriting, or execution plan review.",
         "id": 73,
         "links": [],
-        "title": "Top 10 Slowest Queries",
+        "title": "Slowest Queries ti9me ",
         "vizConfig": {
           "group": "barchart",
           "kind": "VizConfig",
@@ -3249,13 +3250,13 @@
                   "mode": "palette-classic"
                 },
                 "custom": {
-                  "axisBorderShow": false,
+                  "axisBorderShow": true,
                   "axisCenteredZero": false,
                   "axisColorMode": "text",
                   "axisLabel": "",
                   "axisPlacement": "auto",
                   "fillOpacity": 80,
-                  "gradientMode": "none",
+                  "gradientMode": "opacity",
                   "hideFrom": {
                     "legend": false,
                     "tooltip": false,
@@ -3282,22 +3283,23 @@
                     }
                   ]
                 },
-                "unit": "ms"
+                "unit": "s"
               },
               "overrides": []
             },
             "options": {
               "barRadius": 0,
               "barWidth": 0.7,
-              "fullHighlight": false,
+              "colorByField": "Time",
+              "fullHighlight": true,
               "groupWidth": 0.7,
               "legend": {
                 "calcs": [],
                 "displayMode": "list",
                 "placement": "bottom",
-                "showLegend": true
+                "showLegend": false
               },
-              "orientation": "horizontal",
+              "orientation": "auto",
               "showValue": "auto",
               "stacking": "none",
               "tooltip": {
@@ -3305,7 +3307,7 @@
                 "mode": "single",
                 "sort": "none"
               },
-              "xTickLabelRotation": 0,
+              "xTickLabelRotation": -90,
               "xTickLabelSpacing": 0
             }
           },
@@ -3430,7 +3432,7 @@
                     "group": "prometheus",
                     "kind": "DataQuery",
                     "spec": {
-                      "expr": "((((rate(db_query_duration_sum[5m]) / rate(db_query_duration_count[5m])) * 1000) > 500) + (pg_stat_activity_count{state=\"active\"} > 80) + (increase(pg_stat_database_deadlocks[1h]) > 0) + (rate(pg_locks_waiting_total[5m]) > 0) + (((db_pool_active_connections / db_pool_max_connections) * 100) > 90))"
+                      "expr": "((clamp_max(count(pg_running_queries_duration_seconds > 30) or vector(0), 1)) + ((histogram_quantile(0.95, sum(rate(db_query_duration_bucket[5m])) by (le)) * 1000) > bool 500) + (increase(pg_stat_database_deadlocks{datname=\"crypto_analytics\"}[1h]) > bool 0) + (pg_locks_waiting_total > bool 0) + (((db_pool_active_connections / db_pool_max_connections) * 100) > bool 90))"
                     },
                     "version": "v0"
                   },
@@ -3442,7 +3444,7 @@
             "transformations": []
           }
         },
-        "description": "A derived composite health indicator combining five underlying signals: average query latency exceeding 500ms, active connections exceeding 80, any deadlocks in the last hour, any active lock waits, and connection pool utilization exceeding 90%. Each condition that is true contributes one point to the score (0-5). A score of 0 is mapped to Healthy (green), 1-2 to Warning (yellow), and 3 or more to Critical (red). This gives an at-a-glance rollup of database health without needing to check every individual panel during an incident.",
+        "description": "A derived composite health indicator combining five underlying signals: P95 query latency exceeding 500ms, any query running longer than 30s, any deadlocks in the last hour, any active lock waits, and connection pool utilization exceeding 90%. Each true condition contributes one point to the score (0-5). A score of 0 is mapped to Healthy (green), 1-2 to Warning (yellow), and 3 or more to Critical (red). This gives an at-a-glance rollup of database health without needing to check every individual panel during an incident.",
         "id": 79,
         "links": [],
         "title": "Database Health Score",
@@ -3525,6 +3527,1543 @@
           "version": "13.0.2"
         }
       }
+    },
+    "panel-80": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "histogram_quantile(0.50, sum(rate(db_query_duration_bucket[5m])) by (le)) * 1000",
+                      "legendFormat": "p50"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Median (50th percentile) database query execution time, computed with histogram_quantile over the db_query_duration histogram (buckets: 10/50/100/500/1000/2000ms). Half of all queries finish faster than this line - it represents typical/best-case latency, useful as a baseline to compare P90/P95/P99 against.",
+        "id": 80,
+        "links": [],
+        "title": "P50 Query Latency",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "opacity",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 2,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": true,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "ms"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": {
+                "clustering": -1,
+                "multiLane": false
+              },
+              "legend": {
+                "calcs": [],
+                "displayMode": "list",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "multi",
+                "sort": "desc"
+              }
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-81": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "histogram_quantile(0.90, sum(rate(db_query_duration_bucket[5m])) by (le)) * 1000",
+                      "legendFormat": "p90"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "90th percentile database query execution time. 1 in 10 queries is slower than this line. A growing gap between P50 and P90 indicates a subset of queries (not the average) is degrading - usually a specific query pattern, missing index, or lock contention rather than general load.",
+        "id": 81,
+        "links": [],
+        "title": "P90 Query Latency",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "opacity",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 2,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": true,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "ms"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": {
+                "clustering": -1,
+                "multiLane": false
+              },
+              "legend": {
+                "calcs": [],
+                "displayMode": "list",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "multi",
+                "sort": "desc"
+              }
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-83": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(pg_stat_database_blks_hit{datname=\"crypto_analytics\"}[5m]))",
+                      "legendFormat": "Cache Hits (memory)"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(pg_stat_database_blks_read{datname=\"crypto_analytics\"}[5m]))",
+                      "legendFormat": "Disk Reads (cache miss)"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "B"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Shows what fraction of read requests PostgreSQL served from shared_buffers (in-memory cache hit) versus had to fetch from disk (cache miss), from pg_stat_database.blks_hit / blks_read. A healthy OLTP workload should sit above 99% cache hits; a falling ratio means the working set no longer fits in shared_buffers, directly explaining rising read latency and increased disk IO.",
+        "id": 83,
+        "links": [],
+        "title": "Read Distribution (Cache Efficiency)",
+        "vizConfig": {
+          "group": "piechart",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  }
+                },
+                "unit": "blocks"
+              },
+              "overrides": []
+            },
+            "options": {
+              "displayLabels": [
+                "percent"
+              ],
+              "legend": {
+                "displayMode": "table",
+                "placement": "right",
+                "showLegend": true,
+                "values": [
+                  "value",
+                  "percent"
+                ]
+              },
+              "pieType": "pie",
+              "reduceOptions": {
+                "calcs": [
+                  "lastNotNull"
+                ],
+                "fields": "",
+                "values": false
+              },
+              "sort": "desc",
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-84": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(pg_stat_database_tup_inserted{datname=\"crypto_analytics\"}[5m]))",
+                      "legendFormat": "Inserts"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(pg_stat_database_tup_updated{datname=\"crypto_analytics\"}[5m]))",
+                      "legendFormat": "Updates"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "B"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(pg_stat_database_tup_deleted{datname=\"crypto_analytics\"}[5m]))",
+                      "legendFormat": "Deletes"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "C"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(pg_stat_bgwriter_buffers_checkpoint_total[5m]))",
+                      "legendFormat": "Checkpoint buffer writes"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "D"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Breaks down write volume by operation type (INSERT/UPDATE/DELETE from pg_stat_database.tup_*) alongside checkpoint and background-writer buffer flushes (pg_stat_bgwriter). A spike in one slice points to what is driving write load - e.g. a DELETE-heavy cleanup job versus a burst of forced checkpoints from max_wal_size being too small for the write rate.",
+        "id": 84,
+        "links": [],
+        "title": "Write Distribution",
+        "vizConfig": {
+          "group": "piechart",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  }
+                },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "displayLabels": [
+                "percent"
+              ],
+              "legend": {
+                "displayMode": "table",
+                "placement": "right",
+                "showLegend": true,
+                "values": [
+                  "value",
+                  "percent"
+                ]
+              },
+              "pieType": "pie",
+              "reduceOptions": {
+                "calcs": [
+                  "lastNotNull"
+                ],
+                "fields": "",
+                "values": false
+              },
+              "sort": "desc",
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-85": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(node_disk_read_bytes_total[5m]))",
+                      "legendFormat": "Read Bytes/sec"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(node_disk_written_bytes_total[5m]))",
+                      "legendFormat": "Write Bytes/sec"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "B"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(node_disk_read_time_seconds_total[5m])) / sum(rate(node_disk_reads_completed_total[5m]))",
+                      "legendFormat": "Read Latency"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "C"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum(rate(node_disk_write_time_seconds_total[5m])) / sum(rate(node_disk_writes_completed_total[5m]))",
+                      "legendFormat": "Write Latency"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "D"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "rate(pg_stat_database_temp_bytes{datname=\"crypto_analytics\"}[5m])",
+                      "legendFormat": "Temp File Writes"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "E"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "rate(pg_wal_wal_bytes[5m])",
+                      "legendFormat": "WAL Throughput"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "F"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Physical storage throughput and latency underneath PostgreSQL, from node_exporter, plus PostgreSQL-specific IO pressure signals: temp file writes (queries spilling sorts/hashes to disk - work_mem too small) and WAL throughput (write-heavy/replication load). If query latency rises while these climb, the database is disk-bound, not CPU or lock bound.",
+        "id": 85,
+        "links": [],
+        "title": "Disk IO",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "opacity",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 2,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": true,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "Bps"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": {
+                "clustering": -1,
+                "multiLane": false
+              },
+              "legend": {
+                "calcs": [],
+                "displayMode": "list",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "multi",
+                "sort": "desc"
+              }
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-86": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "sum by (wait_event_type) (pg_stat_activity_count{datname=\"crypto_analytics\", wait_event_type!=\"\"})",
+                      "legendFormat": "{{wait_event_type}}"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "What active backends are currently blocked on, grouped by wait_event_type (Lock, IO, Client, BufferPin, Extension, LWLock, IPC, Timeout, Activity) from pg_stat_activity. This is the single fastest way to answer \"why is the database slow right now\": mostly Lock means contention/blocking sessions, mostly IO means disk-bound, mostly Client means the app/network is the bottleneck rather than Postgres itself.",
+        "id": 86,
+        "links": [],
+        "title": "Wait Event Distribution",
+        "vizConfig": {
+          "group": "piechart",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  }
+                },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "displayLabels": [
+                "percent"
+              ],
+              "legend": {
+                "displayMode": "table",
+                "placement": "right",
+                "showLegend": true,
+                "values": [
+                  "value",
+                  "percent"
+                ]
+              },
+              "pieType": "pie",
+              "reduceOptions": {
+                "calcs": [
+                  "lastNotNull"
+                ],
+                "fields": "",
+                "values": false
+              },
+              "sort": "desc",
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-87": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "pg_blocking_sessions_duration_seconds",
+                      "format": "table",
+                      "instant": true
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Live table of every session currently blocked on a lock, paired with the session holding that lock, via pg_blocking_pids(). Populated by postgres_exporter (postgres-exporter-queries.yaml: pg_blocking_sessions). Answers \"who is blocking whom, with what query, and for how long\" - the first three questions during any lock-contention incident. Empty when nothing is blocked.",
+        "id": 87,
+        "links": [],
+        "title": "Blocking Sessions",
+        "vizConfig": {
+          "group": "table",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "align": "auto",
+                  "cellOptions": {
+                    "type": "auto"
+                  },
+                  "filterable": true,
+                  "footer": {
+                    "reducers": []
+                  },
+                  "inspect": false
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "s"
+              },
+              "overrides": []
+            },
+            "options": {
+              "cellHeight": "sm",
+              "footer": {
+                "countRows": false,
+                "fields": "",
+                "reducer": [
+                  "sum"
+                ],
+                "show": false
+              },
+              "showHeader": true,
+              "showTypeIcons": false,
+              "sortBy": [
+                {
+                  "desc": true,
+                  "displayName": "Blocking Duration (s)"
+                }
+              ]
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-88": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "increase(pg_stat_database_deadlocks{datname=\"crypto_analytics\"}[5m])",
+                      "legendFormat": "Deadlocks (5m increase)"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Rate of deadlocks detected by PostgreSQL (pg_stat_database.deadlocks), which fires when two or more transactions each hold a lock the other needs and neither can proceed - PostgreSQL kills one (the victim) to break the cycle. Any sustained non-zero rate here means the application has a lock-ordering bug that needs fixing, not just a database tuning issue.",
+        "id": 88,
+        "links": [],
+        "title": "Deadlock Analysis",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "opacity",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 2,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": true,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": {
+                "clustering": -1,
+                "multiLane": false
+              },
+              "legend": {
+                "calcs": [],
+                "displayMode": "list",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "multi",
+                "sort": "desc"
+              }
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-89": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "pg_running_queries_duration_seconds",
+                      "format": "table",
+                      "instant": true
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Every currently active (non-idle) backend from pg_stat_activity: PID, how long it has been running, state, application, database, and a normalized/truncated query fingerprint. Populated by postgres_exporter (pg_running_queries). This is the live \"what is Postgres doing right now\" view used to spot a runaway query before it becomes a long-running-query alert.",
+        "id": 89,
+        "links": [],
+        "title": "Running Queries",
+        "vizConfig": {
+          "group": "table",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "align": "auto",
+                  "cellOptions": {
+                    "type": "auto"
+                  },
+                  "filterable": true,
+                  "footer": {
+                    "reducers": []
+                  },
+                  "inspect": false
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "s"
+              },
+              "overrides": []
+            },
+            "options": {
+              "cellHeight": "sm",
+              "footer": {
+                "countRows": false,
+                "fields": "",
+                "reducer": [
+                  "sum"
+                ],
+                "show": false
+              },
+              "showHeader": true,
+              "showTypeIcons": false,
+              "sortBy": [
+                {
+                  "desc": true,
+                  "displayName": "Duration (s)"
+                }
+              ]
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-90": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "editorMode": "code",
+                      "expr": "pg_running_queries_duration_seconds > 10",
+                      "format": "table",
+                      "instant": true
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Subset of Running Queries that have executed longer than the configurable 30 second threshold (pg_running_queries_duration_seconds > 30). These are the queries most likely to be holding locks, consuming a connection-pool slot, or about to trigger an application-level timeout - the ones to investigate or kill first during an incident.",
+        "id": 90,
+        "links": [],
+        "title": "Long Running Queries (> 10s)",
+        "vizConfig": {
+          "group": "table",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "align": "auto",
+                  "cellOptions": {
+                    "type": "auto"
+                  },
+                  "filterable": true,
+                  "footer": {
+                    "reducers": []
+                  },
+                  "inspect": false
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "s"
+              },
+              "overrides": []
+            },
+            "options": {
+              "cellHeight": "sm",
+              "footer": {
+                "countRows": false,
+                "fields": "",
+                "reducer": [
+                  "sum"
+                ],
+                "show": false
+              },
+              "showHeader": true,
+              "showTypeIcons": false,
+              "sortBy": [
+                {
+                  "desc": true,
+                  "displayName": "Duration (s)"
+                }
+              ]
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-91": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "db_pool_active_connections",
+                      "legendFormat": "Active"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "db_pool_idle_connections",
+                      "legendFormat": "Idle"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "B"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "db_pool_waiting_clients",
+                      "legendFormat": "Waiting"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "C"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "db_pool_max_connections",
+                      "legendFormat": "Max"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "D"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Prisma connection pool state over time: active (checked out and running a query), idle (open but unused), waiting (queries queued because every connection is busy), and the configured max. Populated by wirePrismaPoolMetrics() in src/metrics.ts, sourced from prisma.$metrics. Any sustained \"waiting\" above zero means requests are being queued behind the pool limit - the direct cause of request latency that isn't visible in query duration alone.",
+        "id": 91,
+        "links": [],
+        "title": "Connection Pool",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "opacity",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 2,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": true,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": {
+                "clustering": -1,
+                "multiLane": false
+              },
+              "legend": {
+                "calcs": [],
+                "displayMode": "list",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "multi",
+                "sort": "desc"
+              }
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-93": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "topk(10, pg_stat_statements_mean_exec_time_ms)",
+                      "format": "table",
+                      "instant": true
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "The 10 normalized query shapes with the highest mean execution time, from pg_stat_statements (postgres_exporter: pg_stat_statements custom query). Unlike the app-level \"database queries duration count\" panel (which only sees queries the app explicitly timed), this sees every statement PostgreSQL itself executed, including ones issued by other tools/roles - the definitive answer to \"which query should I optimize first.\"",
+        "id": 93,
+        "links": [],
+        "title": "Top 10 Slowest Queries (pg_stat_statements)",
+        "vizConfig": {
+          "group": "table",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "align": "auto",
+                  "cellOptions": {
+                    "type": "auto"
+                  },
+                  "footer": {
+                    "reducers": []
+                  },
+                  "inspect": false
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "cellHeight": "sm",
+              "showHeader": true,
+              "sortBy": [
+                {
+                  "desc": false,
+                  "displayName": "__name__"
+                }
+              ]
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
+    },
+    "panel-94": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "Prometheus"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "expr": "topk(10, pg_stat_statements_total_exec_time_ms)",
+                      "format": "table",
+                      "instant": true
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "The 10 normalized query shapes consuming the most cumulative database time (calls x mean time), from pg_stat_statements. A query here doesn't have to be individually slow - a cheap query called extremely often can dominate total database load more than a rare slow one. This is the ranking to use when deciding which query to optimize for the biggest overall load reduction.",
+        "id": 94,
+        "links": [],
+        "title": "Top Query Consumers (Total Time)",
+        "vizConfig": {
+          "group": "table",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "align": "auto",
+                  "cellOptions": {
+                    "type": "auto"
+                  },
+                  "filterable": true,
+                  "footer": {
+                    "reducers": []
+                  },
+                  "inspect": false
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "ms"
+              },
+              "overrides": []
+            },
+            "options": {
+              "cellHeight": "sm",
+              "footer": {
+                "countRows": false,
+                "fields": "",
+                "reducer": [
+                  "sum"
+                ],
+                "show": false
+              },
+              "showHeader": true,
+              "showTypeIcons": false,
+              "sortBy": [
+                {
+                  "desc": true,
+                  "displayName": "Total Time (ms)"
+                }
+              ]
+            }
+          },
+          "version": "13.0.2"
+        }
+      }
     }
   },
   "layout": {
@@ -3536,127 +5075,94 @@
           "spec": {
             "collapse": false,
             "layout": {
-              "kind": "GridLayout",
+              "kind": "AutoGridLayout",
               "spec": {
+                "columnWidthMode": "standard",
                 "items": [
                   {
-                    "kind": "GridLayoutItem",
+                    "kind": "AutoGridLayoutItem",
                     "spec": {
                       "element": {
                         "kind": "ElementReference",
                         "name": "panel-10"
-                      },
-                      "height": 8,
-                      "width": 12,
-                      "x": 0,
-                      "y": 0
+                      }
                     }
                   },
                   {
-                    "kind": "GridLayoutItem",
+                    "kind": "AutoGridLayoutItem",
                     "spec": {
                       "element": {
                         "kind": "ElementReference",
                         "name": "panel-11"
-                      },
-                      "height": 8,
-                      "width": 12,
-                      "x": 12,
-                      "y": 0
+                      }
                     }
                   },
                   {
-                    "kind": "GridLayoutItem",
+                    "kind": "AutoGridLayoutItem",
                     "spec": {
                       "element": {
                         "kind": "ElementReference",
                         "name": "panel-40"
-                      },
-                      "height": 8,
-                      "width": 12,
-                      "x": 0,
-                      "y": 8
+                      }
                     }
                   },
                   {
-                    "kind": "GridLayoutItem",
+                    "kind": "AutoGridLayoutItem",
                     "spec": {
                       "element": {
                         "kind": "ElementReference",
                         "name": "panel-41"
-                      },
-                      "height": 8,
-                      "width": 12,
-                      "x": 12,
-                      "y": 8
+                      }
                     }
                   },
                   {
-                    "kind": "GridLayoutItem",
+                    "kind": "AutoGridLayoutItem",
                     "spec": {
                       "element": {
                         "kind": "ElementReference",
                         "name": "panel-42"
-                      },
-                      "height": 8,
-                      "width": 12,
-                      "x": 0,
-                      "y": 16
+                      }
                     }
                   },
                   {
-                    "kind": "GridLayoutItem",
+                    "kind": "AutoGridLayoutItem",
                     "spec": {
                       "element": {
                         "kind": "ElementReference",
                         "name": "panel-43"
-                      },
-                      "height": 8,
-                      "width": 12,
-                      "x": 12,
-                      "y": 16
+                      }
                     }
                   },
                   {
-                    "kind": "GridLayoutItem",
+                    "kind": "AutoGridLayoutItem",
                     "spec": {
                       "element": {
                         "kind": "ElementReference",
                         "name": "panel-44"
-                      },
-                      "height": 8,
-                      "width": 12,
-                      "x": 0,
-                      "y": 24
+                      }
                     }
                   },
                   {
-                    "kind": "GridLayoutItem",
+                    "kind": "AutoGridLayoutItem",
                     "spec": {
                       "element": {
                         "kind": "ElementReference",
                         "name": "panel-45"
-                      },
-                      "height": 8,
-                      "width": 12,
-                      "x": 12,
-                      "y": 24
+                      }
                     }
                   },
                   {
-                    "kind": "GridLayoutItem",
+                    "kind": "AutoGridLayoutItem",
                     "spec": {
                       "element": {
                         "kind": "ElementReference",
                         "name": "panel-46"
-                      },
-                      "height": 8,
-                      "width": 12,
-                      "x": 0,
-                      "y": 32
+                      }
                     }
                   }
-                ]
+                ],
+                "maxColumnCount": 3,
+                "rowHeightMode": "standard"
               }
             },
             "title": "Infrastructure Monitoring"
@@ -4001,6 +5507,189 @@
               }
             },
             "title": "Database Monitoring"
+          }
+        },
+        {
+          "kind": "RowsLayoutRow",
+          "spec": {
+            "collapse": false,
+            "layout": {
+              "kind": "GridLayout",
+              "spec": {
+                "items": [
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-80"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 0,
+                      "y": 0
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-81"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 8,
+                      "y": 0
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-83"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 16,
+                      "y": 0
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-86"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 0,
+                      "y": 10
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-84"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 8,
+                      "y": 10
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-85"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 16,
+                      "y": 10
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-88"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 0,
+                      "y": 20
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-91"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 8,
+                      "y": 20
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-87"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 16,
+                      "y": 20
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-89"
+                      },
+                      "height": 10,
+                      "width": 16,
+                      "x": 0,
+                      "y": 30
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-90"
+                      },
+                      "height": 10,
+                      "width": 8,
+                      "x": 16,
+                      "y": 30
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-93"
+                      },
+                      "height": 11,
+                      "width": 24,
+                      "x": 0,
+                      "y": 40
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-94"
+                      },
+                      "height": 11,
+                      "width": 24,
+                      "x": 0,
+                      "y": 51
+                    }
+                  }
+                ]
+              }
+            },
+            "title": "Database Performance"
           }
         }
       ]

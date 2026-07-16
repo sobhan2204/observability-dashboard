@@ -6,15 +6,47 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
       POSTGRES_DB: crypto_analytics
+    # pg_stat_statements must be loaded at server start (it cannot be enabled
+    # with just CREATE EXTENSION), so it's preloaded here and installed into
+    # the database by the init script below.
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.track=all"
+      - "-c"
+      - "pg_stat_statements.max=10000"
+      - "-c"
+      - "track_io_timing=on"
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d crypto_analytics"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    container_name: crypto-postgres-exporter
+    restart: unless-stopped
+    environment:
+      # Dedicated read-only monitoring role (named "monitoring_user" - role
+      # names starting with "pg_" are reserved by Postgres itself), not the
+      # app's admin user - see postgres-init/02-monitoring-role.sql.
+      DATA_SOURCE_NAME: "postgresql://monitoring_user:monitoring_password@db:5432/crypto_analytics?sslmode=disable"
+      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres-exporter/queries.yaml"
+    volumes:
+      - ./postgres-exporter-queries.yaml:/etc/postgres-exporter/queries.yaml:ro
+    ports:
+      - "9187:9187"
+    depends_on:
+      db:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
