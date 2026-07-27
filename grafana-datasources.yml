@@ -22,3 +22,33 @@ datasources:
       tracesToLogsV2:
         datasourceUid: 'loki'
         tags: ['job', 'instance']
+
+  # JSON API datasource (Infinity plugin) backing the redis-client-monitor's
+  # /clients endpoint - used for the client table, by-IP bar chart, and
+  # by-user pie chart, since per-client detail is deliberately kept out of
+  # Prometheus to avoid unbounded-cardinality labels (see redis-client-monitor).
+  - name: Infinity
+    type: yesoreyeram-infinity-datasource
+    uid: Infinity
+    access: proxy
+    jsonData:
+      allowedHosts:
+        - http://redis-client-monitor:8001
+
+  - name: Postgres
+    type: postgres
+    uid: Postgres
+    access: proxy
+    url: db:5432
+    database: crypto_analytics
+    user: monitoring_user
+    secureJsonData:
+      password: monitoring_password
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1500
+      # Read-only monitoring role (pg_monitor + SELECT on pg_stat_statements,
+      # see postgres-init/02-monitoring-role.sql) - used only for live
+      # SQL table panels (blocking sessions, running queries, top slow
+      # queries) that need raw text and can't be modeled as bounded-cardinality
+      # Prometheus label sets.

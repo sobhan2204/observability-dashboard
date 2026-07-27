@@ -1,0 +1,210 @@
+{
+  "id": null,
+  "uid": "redis-connected-clients",
+  "title": "Redis Connected Clients",
+  "description": "Live view of Redis CLIENT LIST detail, backed by the redis-client-monitor service. Numeric aggregates come from Prometheus; per-client detail comes from the /clients JSON endpoint via the Infinity datasource.",
+  "tags": ["redis", "clients"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Connected Clients",
+      "description": "Current number of clients connected to Redis (CLIENT LIST count).",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "redis_connected_clients_total",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Connected Clients",
+      "description": "Per-client detail from CLIENT LIST, polled every 5s by redis-client-monitor.",
+      "type": "table",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "Infinity" },
+      "gridPos": { "h": 12, "w": 18, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "Infinity" },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "url": "http://redis-client-monitor:8001/clients",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "",
+          "parser": "backend",
+          "columns": [
+            { "selector": "id", "text": "Client ID", "type": "number" },
+            { "selector": "name", "text": "Client Name", "type": "string" },
+            { "selector": "user", "text": "Username", "type": "string" },
+            { "selector": "ip", "text": "IP Address", "type": "string" },
+            { "selector": "port", "text": "Port", "type": "number" },
+            { "selector": "db", "text": "Database", "type": "number" },
+            { "selector": "age", "text": "Age (s)", "type": "number" },
+            { "selector": "idle", "text": "Idle (s)", "type": "number" },
+            { "selector": "last_command", "text": "Last Command", "type": "string" }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Age (s)", "desc": true }]
+      }
+    },
+    {
+      "id": 3,
+      "title": "Clients by IP",
+      "description": "Number of active connections per client IP address.",
+      "type": "barchart",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "Infinity" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "Infinity" },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "url": "http://redis-client-monitor:8001/clients",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "",
+          "parser": "backend",
+          "columns": [
+            { "selector": "ip", "text": "IP Address", "type": "string" }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "IP Address": { "aggregations": ["count"], "operation": "groupby" }
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "legend": { "showLegend": false }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Clients by Username",
+      "description": "Distribution of active connections by Redis ACL user.",
+      "type": "piechart",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "Infinity" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "Infinity" },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "url": "http://redis-client-monitor:8001/clients",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "",
+          "parser": "backend",
+          "columns": [
+            { "selector": "user", "text": "Username", "type": "string" }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Username": { "aggregations": ["count"], "operation": "groupby" }
+            }
+          }
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
+        "pieType": "pie",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Connection Timeline",
+      "description": "Total connected clients over time.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "expr": "redis_connected_clients_total",
+          "legendFormat": "Connected clients",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single" }
+      }
+    }
+  ]
+}

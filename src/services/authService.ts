@@ -1,19 +1,35 @@
 import { prisma } from '../db';
+import { Prisma } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { loginAttemptsTotal, loginFailuresTotal, dbQueryDuration } from '../metrics';
 import { logSecurityEvent } from './securityService';
+import { AppError } from '../errors/AppError';
 
 export const registerUser = async (email: string, passwordHash: string) => {
   const endTimer = dbQueryDuration.startTimer();
-  const user = await prisma.user.create({
-    data: {
-      email,
-      password: passwordHash,
-    },
-  });
-  endTimer();
-  return user;
+  try {
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: passwordHash,
+      },
+    });
+    return user;
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      Array.isArray(error.meta?.target) &&
+      error.meta.target.includes('email')
+    ) {
+      throw new AppError(409, 'Email already registered');
+    }
+
+    throw error;
+  } finally {
+    endTimer();
+  }
 };
 
 export const loginUser = async (email: string, passwordRaw: string, ip: string) => {

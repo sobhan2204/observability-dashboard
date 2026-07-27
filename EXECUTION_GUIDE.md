@@ -40,6 +40,10 @@ In the `frontend` directory:
 2. **Run Application:** `npm run dev`
 3. **Access UI:** Open **http://localhost:3005** in your browser.
 
+cd frontend                                                                                                                     
+npm install                                                     
+npm run dev     
+
 ## 5. Testing the Pipeline
 
 ### Manual Backend Testing (CLI/API Client)

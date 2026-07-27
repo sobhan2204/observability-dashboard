@@ -1,5 +1,6 @@
 import client from 'prom-client';
-import { Pool } from 'pg';
+import type { PrismaClient } from '@prisma/client';
+import logger from './logger';
 
 // Create a Registry
 const register = new client.Registry();
@@ -88,34 +89,36 @@ export const dbQueryDuration = new client.Histogram({
   buckets: [0.01, 0.05, 0.1, 0.5, 1, 2]
 });
 
-// --- NEW: connection pool gauges (backed by pg.Pool's own counters) ---
+// --- Connection pool gauges. Prisma manages its own pool internally (there
+// is no raw pg.Pool anywhere in this app - see src/db.ts), so these are
+// populated from Prisma's own metrics API (prisma.$metrics), not by polling
+// a Pool object directly. See wirePrismaPoolMetrics() below. ---
 export const dbPoolActiveConnections = new client.Gauge({
   name: 'db_pool_active_connections',
-  help: 'Number of connections currently checked out of the pool and in use'
+  help: 'Number of Prisma pool connections currently checked out and running a query'
 });
 
 export const dbPoolIdleConnections = new client.Gauge({
   name: 'db_pool_idle_connections',
-  help: 'Number of connections sitting idle in the pool'
+  help: 'Number of Prisma pool connections open but idle'
+});
+
+export const dbPoolWaitingClients = new client.Gauge({
+  name: 'db_pool_waiting_clients',
+  help: 'Number of queries currently queued waiting for a free pool connection'
 });
 
 export const dbPoolMaxConnections = new client.Gauge({
   name: 'db_pool_max_connections',
-  help: 'Configured maximum size of the connection pool'
+  help: 'Configured maximum size of the connection pool (Prisma connection_limit)'
 });
 
-// --- NEW: lock and deadlock gauges (backed by polling Postgres system views) ---
-export const dbLockWaits = new client.Gauge({
-  name: 'db_lock_waits',
-  help: 'Current number of sessions waiting to acquire a lock'
-});
+// Lock waits and deadlocks are collected server-side by postgres_exporter
+// (pg_locks_waiting_total, pg_stat_database_deadlocks) instead of being
+// polled from the app - see postgres-exporter-queries.yaml. That avoids
+// duplicating the same pg_locks/pg_stat_database polling in two places and
+// keeps it working even when the app process is down.
 
-export const dbDeadlocksTotal = new client.Gauge({
-  name: 'db_deadlocks_total',
-  help: 'Cumulative deadlock count reported by PostgreSQL for this database'
-});
-
-// Register all custom metrics
 register.registerMetric(httpRequestDurationMicroseconds);
 register.registerMetric(httpRequestsTotal);
 register.registerMetric(loginAttemptsTotal);
@@ -132,46 +135,40 @@ register.registerMetric(externalApiLatency);
 register.registerMetric(dbQueryDuration);
 register.registerMetric(dbPoolActiveConnections);
 register.registerMetric(dbPoolIdleConnections);
+register.registerMetric(dbPoolWaitingClients);
 register.registerMetric(dbPoolMaxConnections);
-register.registerMetric(dbLockWaits);
-register.registerMetric(dbDeadlocksTotal);
 
-// --- NEW: wire pool metrics ---
-// Call this once, right after you construct your pg.Pool instance, passing
-// the same `max` value you configured on the pool (pg's public TypeScript
-// types don't expose `.options`, so we take it as an explicit argument
-// instead of reading it back off the pool instance).
-//   const maxConnections = 20;
-//   const pool = new Pool({ ...config, max: maxConnections });
-//   wirePoolMetrics(pool, maxConnections);
-export function wirePoolMetrics(pool: Pool, maxConnections: number, intervalMs = 5000): void {
-  dbPoolMaxConnections.set(maxConnections);
-
-  // pg.Pool doesn't emit active/idle counts as events, so sample on an interval.
-  setInterval(() => {
-    dbPoolActiveConnections.set(pool.totalCount - pool.idleCount);
-    dbPoolIdleConnections.set(pool.idleCount);
-  }, intervalMs);
+interface PrismaMetricEntry {
+  key: string;
+  value: number;
+  labels?: Record<string, string>;
 }
 
-// --- NEW: wire lock/deadlock metrics ---
-// Call this once alongside wirePoolMetrics(pool). Requires the pool's DB
-// user to have permission to read pg_locks and pg_stat_database (default
-// for most roles, including the table owner).
-export function wireLockMetrics(pool: Pool, intervalMs = 10000): void {
+interface PrismaMetricsJson {
+  counters: PrismaMetricEntry[];
+  gauges: PrismaMetricEntry[];
+  histograms: unknown[];
+}
+
+const sumGaugeByKeySubstring = (gauges: PrismaMetricEntry[], needle: string): number =>
+  gauges.filter((g) => g.key.includes(needle)).reduce((total, g) => total + g.value, 0);
+
+// Prisma manages its own internal connection pool and exposes its state via
+// prisma.$metrics (preview feature enabled in prisma/schema.prisma) rather
+// than a pg.Pool we could poll directly. This samples that API on an
+// interval and republishes the numbers under our own gauge names so
+// Grafana/Prometheus don't need to know Prisma's internal metric naming.
+export function wirePrismaPoolMetrics(prisma: PrismaClient, maxConnections: number, intervalMs = 5000): void {
+  dbPoolMaxConnections.set(maxConnections);
+
   setInterval(async () => {
     try {
-      const lockRes = await pool.query(
-        `SELECT count(*) AS waiting FROM pg_locks WHERE NOT granted`
-      );
-      dbLockWaits.set(Number(lockRes.rows[0].waiting));
-
-      const deadlockRes = await pool.query(
-        `SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()`
-      );
-      dbDeadlocksTotal.set(Number(deadlockRes.rows[0].deadlocks));
+      const metrics = (await prisma.$metrics.json()) as PrismaMetricsJson;
+      dbPoolActiveConnections.set(sumGaugeByKeySubstring(metrics.gauges, 'connections_busy'));
+      dbPoolIdleConnections.set(sumGaugeByKeySubstring(metrics.gauges, 'connections_idle'));
+      dbPoolWaitingClients.set(sumGaugeByKeySubstring(metrics.gauges, 'connections_waiting'));
     } catch (err) {
-      console.error('Failed to poll lock/deadlock metrics', err);
+      logger.error('Failed to poll Prisma pool metrics', { err });
     }
   }, intervalMs);
 }

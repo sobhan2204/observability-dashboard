@@ -1,9 +1,10 @@
 import rateLimit from 'express-rate-limit';
 import logger from '../logger';
 
+// rate limit for 15 mins
 export const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+  windowMs: 15 * 60 * 1000, // -->15 minutes
+  max: 100, // Limit each IP to 100 requests per window ms
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res, next, options) => {
@@ -12,6 +13,7 @@ export const apiLimiter = rateLimit({
   },
 });
 
+// loin limit -> 5 attemps in 1 min 
 export const loginLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 5, // Limit each IP to 5 login requests per minute

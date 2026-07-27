@@ -35,6 +35,10 @@ Thumbs.db
 # Testing
 coverage/
 
+# Python
+__pycache__/
+*.pyc
+
 # Stray dev-server logs
 frontend/dev*.err
 frontend/dev*.out
