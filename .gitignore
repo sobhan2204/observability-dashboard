@@ -34,3 +34,7 @@ Thumbs.db
 
 # Testing
 coverage/
+
+# Stray dev-server logs
+frontend/dev*.err
+frontend/dev*.out

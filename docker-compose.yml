@@ -3,9 +3,10 @@ services:
     image: postgres:15-alpine
     container_name: crypto-pg
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: crypto_analytics
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      MONITORING_PASSWORD: ${MONITORING_PASSWORD}
     # pg_stat_statements must be loaded at server start (it cannot be enabled
     # with just CREATE EXTENSION), so it's preloaded here and installed into
     # the database by the init script below.
@@ -38,7 +39,7 @@ services:
       # Dedicated read-only monitoring role (named "monitoring_user" - role
       # names starting with "pg_" are reserved by Postgres itself), not the
       # app's admin user - see postgres-init/02-monitoring-role.sql.
-      DATA_SOURCE_NAME: "postgresql://monitoring_user:monitoring_password@db:5432/crypto_analytics?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://monitoring_user:${MONITORING_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
       PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres-exporter/queries.yaml"
     volumes:
       - ./postgres-exporter-queries.yaml:/etc/postgres-exporter/queries.yaml:ro
@@ -62,6 +63,21 @@ services:
       REDIS_ADDR: "redis://redis:6379"
     ports:
       - "9121:9121"
+    depends_on:
+      - redis
+
+  redis-client-monitor:
+    build: ./redis-client-monitor
+    container_name: crypto-redis-client-monitor
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # REDIS_USERNAME / REDIS_PASSWORD: set these if the redis service
+      # below is configured with --requirepass / ACLs.
+      POLL_INTERVAL_SECONDS: "5"
+    ports:
+      - "8001:8001"
     depends_on:
       - redis
 
@@ -114,12 +130,16 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/crypto-dashboard.json
+      - GF_INSTALL_PLUGINS=yesoreyeram-infinity-datasource
     volumes:
       - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
       - ./grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
       - ./grafana-dashboard.json:/var/lib/grafana/dashboards/crypto-dashboard.json
+      - ./redis-clients-dashboard.json:/var/lib/grafana/dashboards/redis-clients-dashboard.json
+    depends_on:
+      - redis-client-monitor
 
 
 volumes:
