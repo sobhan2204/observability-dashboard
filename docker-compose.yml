@@ -1,4 +1,34 @@
 services:
+  app:
+    build: .
+    container_name: crypto-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public&connection_limit=10"
+      REDIS_URL: "redis://redis:6379"
+      OTLP_TRACE_ENDPOINT: "http://tempo:4318/v1/traces"
+      LOKI_HOST: "http://loki:3100"
+    ports:
+      - "3030:3030"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    container_name: crypto-frontend
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    depends_on:
+      - app
+
   db:
     image: postgres:15-alpine
     container_name: crypto-pg
