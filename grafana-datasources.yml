@@ -21,7 +21,7 @@ datasources:
     jsonData:
       httpMethod: GET
       tracesToLogsV2:
-        datasourceUid: 'loki'
+        datasourceUid: 'Loki'
         tags: ['job', 'instance']
 
   # JSON API datasource (Infinity plugin) backing the redis-client-monitor's
